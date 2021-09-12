@@ -12,8 +12,70 @@ except:
     from blocks import LinearBlock, Conv2dBlock, ResBlocks
 
 import sys
-sys.path.append('..')
-from modules import modulated_deform_conv  
+sys.path.append('.')
+# from modules import modulated_deform_conv  
+import torch
+import torchvision.ops
+from torch import nn
+
+class DeformableConv2d(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size=3,
+                 stride=1,
+                 padding=1,
+                 bias=False):
+
+        super(DeformableConv2d, self).__init__()
+        
+        self.stride = stride if type(stride) == tuple else (stride, stride)
+        self.padding = padding
+        
+        self.offset_conv = nn.Conv2d(in_channels, 
+                                     2 * kernel_size * kernel_size,
+                                     kernel_size=kernel_size, 
+                                     stride=stride,
+                                     padding=self.padding, 
+                                     bias=True)
+
+        nn.init.constant_(self.offset_conv.weight, 0.)
+        nn.init.constant_(self.offset_conv.bias, 0.)
+        
+        self.modulator_conv = nn.Conv2d(in_channels, 
+                                     1 * kernel_size * kernel_size,
+                                     kernel_size=kernel_size, 
+                                     stride=stride,
+                                     padding=self.padding, 
+                                     bias=True)
+
+        nn.init.constant_(self.modulator_conv.weight, 0.)
+        nn.init.constant_(self.modulator_conv.bias, 0.)
+        
+        self.regular_conv = nn.Conv2d(in_channels=in_channels,
+                                      out_channels=out_channels,
+                                      kernel_size=kernel_size,
+                                      stride=stride,
+                                      padding=self.padding,
+                                      bias=bias)
+
+    def forward(self, x):
+        #h, w = x.shape[2:]
+        #max_offset = max(h, w)/4.
+
+        offset = self.offset_conv(x)#.clamp(-max_offset, max_offset)
+        modulator = 2. * torch.sigmoid(self.modulator_conv(x))
+        
+        x = torchvision.ops.deform_conv2d(input=x, 
+                                          offset=offset, 
+                                          weight=self.regular_conv.weight, 
+                                          bias=self.regular_conv.bias, 
+                                          padding=self.padding,
+                                          mask=modulator,
+                                          stride=self.stride,
+                                          )
+        return x, offset
+
 
 class Generator(nn.Module):   
     def __init__(self, img_size=80, sty_dim=64, n_res=2, use_sn=False):
@@ -78,8 +140,8 @@ class Decoder(nn.Module):
 
         self.model.append(Conv2dBlock(2*nf, 3, 7, 1, 3, norm='none', act='tanh', pad_type=pad, use_sn=use_sn))
         self.model = nn.Sequential(*self.model)
-        self.dcn = modulated_deform_conv.ModulatedDeformConvPack(64, 64, kernel_size=(3, 3), stride=1, padding=1, groups=1, deformable_groups=1, double=True).cuda()
-        self.dcn_2 = modulated_deform_conv.ModulatedDeformConvPack(128, 128, kernel_size=(3, 3), stride=1, padding=1, groups=1, deformable_groups=1, double=True).cuda()
+        self.dcn = DeformableConv2d(128, 64, kernel_size=3, stride=1, padding=1).cuda()
+        self.dcn_2 = DeformableConv2d(256, 128, kernel_size=3, stride=1, padding=1).cuda()
 
     def forward(self, x, skip1, skip2):
         output = x
@@ -88,12 +150,12 @@ class Decoder(nn.Module):
 
             if i == 2: 
                 deformable_concat = torch.cat((output,skip2), dim=1)
-                concat_pre, offset2 = self.dcn_2(deformable_concat, skip2)
+                concat_pre, offset2 = self.dcn_2(deformable_concat)
                 output = torch.cat((concat_pre,output), dim=1)
 
             if i == 4:
                 deformable_concat = torch.cat((output,skip1), dim=1)
-                concat_pre, offset1 = self.dcn(deformable_concat, skip1)
+                concat_pre, offset1 = self.dcn(deformable_concat)
                 output = torch.cat((concat_pre,output), dim=1)
             
         offset_sum1 = torch.mean(torch.abs(offset1))
@@ -112,26 +174,26 @@ class ContentEncoder(nn.Module):
         self.model = nn.ModuleList()
         self.model.append(ResBlocks(n_res, 256, norm=norm, act=act, pad_type=pad, use_sn=use_sn))
         self.model = nn.Sequential(*self.model)
-        self.dcn1 = modulated_deform_conv.ModulatedDeformConvPack(3, 64, kernel_size=(7, 7), stride=1, padding=3, groups=1, deformable_groups=1).cuda()
-        self.dcn2 = modulated_deform_conv.ModulatedDeformConvPack(64, 128, kernel_size=(4, 4), stride=2, padding=1, groups=1, deformable_groups=1).cuda()
-        self.dcn3 = modulated_deform_conv.ModulatedDeformConvPack(128, 256, kernel_size=(4, 4), stride=2, padding=1, groups=1, deformable_groups=1).cuda()
+        self.dcn1 = DeformableConv2d(3, 64, kernel_size=7, stride=1, padding=3).cuda()
+        self.dcn2 = DeformableConv2d(64, 128, kernel_size=4, stride=2, padding=1).cuda()
+        self.dcn3 = DeformableConv2d(128, 256, kernel_size=4, stride=2, padding=1).cuda()
         self.IN1 = nn.InstanceNorm2d(64)
         self.IN2 = nn.InstanceNorm2d(128)
         self.IN3 = nn.InstanceNorm2d(256)
         self.activation = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        x, _ = self.dcn1(x, x)
+        x, _ = self.dcn1(x)
         x = self.IN1(x)
         x = self.activation(x)
         skip1 = x
         
-        x, _ = self.dcn2(x, x)
+        x, _ = self.dcn2(x)
         x = self.IN2(x)
         x = self.activation(x)
         skip2 = x
 
-        x, _ = self.dcn3(x, x)
+        x, _ = self.dcn3(x)
         x = self.IN3(x)
         x = self.activation(x)
         x = self.model(x)

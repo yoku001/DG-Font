@@ -1,3 +1,4 @@
+import random
 import torch.nn
 import torch.nn.parallel
 import torch.optim
@@ -43,7 +44,7 @@ def validateUN(data_loader, networks, epoch, args, additional=None):
         for cls_idx in range(len(args.att_to_use)):
             tmp_cls_set = (val_tot_tars == args.att_to_use[cls_idx]).nonzero()[-args.val_num:]
             tmp_ds = torch.utils.data.Subset(val_dataset, tmp_cls_set)
-            tmp_dl = torch.utils.data.DataLoader(tmp_ds, batch_size=args.val_num, shuffle=False,
+            tmp_dl = torch.utils.data.DataLoader(tmp_ds, batch_size=args.val_num, shuffle=True,
                                                  num_workers=0, pin_memory=True, drop_last=False)
             tmp_iter = iter(tmp_dl)
             tmp_sample = None
@@ -56,17 +57,18 @@ def validateUN(data_loader, networks, epoch, args, additional=None):
                     tmp_sample = torch.cat((tmp_sample, x_), 0)
             x_each_cls.append(tmp_sample)
     
-    
+    src_ids = random.sample(args.att_to_use, 5)
+    ref_ids = random.sample(args.att_to_use, 5)
     if epoch >= args.fid_start:
         # Reference guided
         with torch.no_grad():
            # Just a buffer image ( to make a grid )
             ones = torch.ones(1, x_each_cls[0].size(1), x_each_cls[0].size(2), x_each_cls[0].size(3)).cuda(args.gpu, non_blocking=True)
-            for src_idx in range(len(args.att_to_use)):
+            for src_idx in src_ids:
                 x_src = x_each_cls[src_idx][:args.val_batch, :, :, :].cuda(args.gpu, non_blocking=True)
                 rnd_idx = torch.randperm(x_each_cls[src_idx].size(0))[:args.val_batch]
                 x_src_rnd = x_each_cls[src_idx][rnd_idx].cuda(args.gpu, non_blocking=True)
-                for ref_idx in range(len(args.att_to_use)):
+                for ref_idx in ref_ids:
                     x_res_ema = torch.cat((ones, x_src), 0)
                     x_rnd_ema = torch.cat((ones, x_src_rnd), 0)
                     x_ref = x_each_cls[ref_idx][:args.val_batch, :, :, :].cuda(args.gpu, non_blocking=True)
@@ -91,7 +93,7 @@ def validateUN(data_loader, networks, epoch, args, additional=None):
                         x_rnd_ema_tmp = torch.cat((x_ref_rnd[sample_idx: sample_idx + 1], x_rnd_ema_tmp), 0)
                         x_rnd_ema = torch.cat((x_rnd_ema, x_rnd_ema_tmp), 0)
     
-                    vutils.save_image(x_res_ema, os.path.join(args.res_dir, '{}_EMA_{}_{}{}.jpg'.format(args.gpu, epoch+1, src_idx, ref_idx)), normalize=True,
+                    vutils.save_image(x_res_ema, os.path.join(args.res_dir, 'EMA_{}_{}_{}.jpg'.format(epoch+1, src_idx, ref_idx)), normalize=True,
                                     nrow=(x_res_ema.size(0) // (x_src.size(0) + 2) + 1))
-                    vutils.save_image(x_rnd_ema, os.path.join(args.res_dir, '{}_RNDEMA_{}_{}{}.jpg'.format(args.gpu, epoch+1, src_idx, ref_idx)), normalize=True,
+                    vutils.save_image(x_rnd_ema, os.path.join(args.res_dir, 'RNDEMA_{}_{}_{}.jpg'.format(epoch+1, src_idx, ref_idx)), normalize=True,
                                     nrow=(x_res_ema.size(0) // (x_src.size(0) + 2) + 1))

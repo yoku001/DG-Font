@@ -37,7 +37,7 @@ data_dir = args.ttf_path
 data_root = pathlib.Path(data_dir)
 print(data_root)
 
-all_image_paths = list(data_root.glob('*.ttf*'))
+all_image_paths = sorted(data_root.glob('*.ttf*'))
 all_image_paths = [str(path) for path in all_image_paths]
 print(len(all_image_paths))
 for i in range (len(all_image_paths)):
