@@ -317,9 +317,7 @@ def build_model(args):
 
 def load_model(args, networks, opts):
     if args.load_model is not None:
-        check_load = open(os.path.join(args.log_dir, "checkpoint.txt"), 'r')
-        to_restore = check_load.readlines()[-1].strip()
-        load_file = os.path.join(args.log_dir, to_restore)
+        load_file = args.load_model
         if os.path.isfile(load_file):
             print("=> loading checkpoint '{}'".format(load_file))
             checkpoint = torch.load(load_file, map_location='cpu')
