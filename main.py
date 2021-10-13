@@ -233,7 +233,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     for epoch in range(args.start_epoch, args.epochs):
         print("START EPOCH[{}]".format(epoch+1))
-        if (epoch + 1) % (args.epochs // 25) == 0:
+        if (epoch + 1) % (args.epochs // 20) == 0:
             save_model(args, epoch, networks, opts)
 
         if args.distributed:
@@ -247,7 +247,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
         trainFunc(train_loader, networks, opts, epoch, args, {'logger': logger})
 
-        validationFunc(val_loader, networks, epoch, args, {'logger': logger})
+        if (epoch + 1) % (args.epochs // 3) == 0:
+            validationFunc(val_loader, networks, epoch, args, {'logger': logger})
 
 #################
 # Sub functions #
@@ -321,7 +322,9 @@ def load_model(args, networks, opts):
         if os.path.isfile(load_file):
             print("=> loading checkpoint '{}'".format(load_file))
             checkpoint = torch.load(load_file, map_location='cpu')
+            checkpoint['epoch'] = 0
             args.start_epoch = checkpoint['epoch']
+
             if not args.multiprocessing_distributed:
                 for name, net in networks.items():
                     tmp_keys = next(iter(checkpoint[name + '_state_dict'].keys()))
@@ -329,20 +332,38 @@ def load_model(args, networks, opts):
                         tmp_new_dict = OrderedDict()
                         for key, val in checkpoint[name + '_state_dict'].items():
                             tmp_new_dict[key[7:]] = val
+
+                        tmp_new_dict = check_state_dict_shape(net, tmp_new_dict)
                         net.load_state_dict(tmp_new_dict)
                         networks[name] = net
                     else:
-                        net.load_state_dict(checkpoint[name + '_state_dict'])
+                        state_dict = check_state_dict_shape(net, checkpoint[name + '_state_dict'])
+                        net.load_state_dict(state_dict)
                         networks[name] = net
 
-            for name, opt in opts.items():
-                opt.load_state_dict(checkpoint[name.lower() + '_optimizer'])
-                opts[name] = opt
+            # for name, opt in opts.items():
+            #     opt.load_state_dict(checkpoint[name.lower() + '_optimizer'])
+            #     opts[name] = opt
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(load_file, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(args.log_dir))
 
+def check_state_dict_shape(net, state_dict: dict):
+    model_state_dict = net.state_dict()
+    is_changed = False
+    for k in state_dict:
+        if k in model_state_dict:
+            if state_dict[k].shape != model_state_dict[k].shape:
+                print(f"Skip loading parameter: {k}, "
+                            f"required shape: {model_state_dict[k].shape}, "
+                            f"loaded shape: {state_dict[k].shape}")
+                state_dict[k] = model_state_dict[k]
+                is_changed = True
+        else:
+            print(f"Dropping parameter {k}")
+            is_changed = True
+    return state_dict
 
 def get_loader(args, dataset):
     train_dataset = dataset['train']

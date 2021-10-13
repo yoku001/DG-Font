@@ -41,9 +41,13 @@ def validateUN(data_loader, networks, epoch, args, additional=None):
     x_each_cls = []
     with torch.no_grad():
         val_tot_tars = torch.tensor(val_dataset.targets)
+
         for cls_idx in range(len(args.att_to_use)):
-            tmp_cls_set = (val_tot_tars == args.att_to_use[cls_idx]).nonzero()[-args.val_num:]
-            tmp_ds = torch.utils.data.Subset(val_dataset, tmp_cls_set)
+            # tmp_cls_set = (val_tot_tars == args.att_to_use[cls_idx]).nonzero()[-args.val_num-50:-50]
+            tmp_cls_set = (val_tot_tars == args.att_to_use[cls_idx]).nonzero().ravel()
+            tmp_cls_set = np.random.choice(tmp_cls_set, args.val_num)[:,np.newaxis]
+            tmp_ds = torch.utils.data.Subset(val_dataset, torch.tensor(tmp_cls_set))
+
             tmp_dl = torch.utils.data.DataLoader(tmp_ds, batch_size=args.val_num, shuffle=True,
                                                  num_workers=0, pin_memory=True, drop_last=False)
             tmp_iter = iter(tmp_dl)
@@ -79,7 +83,7 @@ def validateUN(data_loader, networks, epoch, args, additional=None):
     
                         c_src, skip1, skip2 = G_EMA.cnt_encoder(x_src)
                         s_ref = C_EMA(x_ref_tmp, sty=True)
-                        x_res_ema_tmp,_ = G_EMA.decode(c_src, s_ref, skip1, skip2)
+                        # x_res_ema_tmp,_ = G_EMA.decode(c_src, s_ref, skip1, skip2)
     
                         x_ref_tmp = x_ref_rnd[sample_idx: sample_idx + 1].repeat((args.val_batch, 1, 1, 1))
     
@@ -87,13 +91,13 @@ def validateUN(data_loader, networks, epoch, args, additional=None):
                         s_ref = C_EMA(x_ref_tmp, sty=True)
                         x_rnd_ema_tmp,_ = G_EMA.decode(c_src, s_ref, skip1, skip2)
     
-                        x_res_ema_tmp = torch.cat((x_ref[sample_idx: sample_idx + 1], x_res_ema_tmp), 0)
-                        x_res_ema = torch.cat((x_res_ema, x_res_ema_tmp), 0)
+                        # x_res_ema_tmp = torch.cat((x_ref[sample_idx: sample_idx + 1], x_res_ema_tmp), 0)
+                        # x_res_ema = torch.cat((x_res_ema, x_res_ema_tmp), 0)
     
                         x_rnd_ema_tmp = torch.cat((x_ref_rnd[sample_idx: sample_idx + 1], x_rnd_ema_tmp), 0)
                         x_rnd_ema = torch.cat((x_rnd_ema, x_rnd_ema_tmp), 0)
     
-                    vutils.save_image(x_res_ema, os.path.join(args.res_dir, 'EMA_{}_{}_{}.jpg'.format(epoch+1, src_idx, ref_idx)), normalize=True,
-                                    nrow=(x_res_ema.size(0) // (x_src.size(0) + 2) + 1))
+                    # vutils.save_image(x_res_ema, os.path.join(args.res_dir, 'EMA_{}_{}_{}.jpg'.format(epoch+1, src_idx, ref_idx)), normalize=True,
+                    #                 nrow=(x_res_ema.size(0) // (x_src.size(0) + 2) + 1))
                     vutils.save_image(x_rnd_ema, os.path.join(args.res_dir, 'RNDEMA_{}_{}_{}.jpg'.format(epoch+1, src_idx, ref_idx)), normalize=True,
                                     nrow=(x_res_ema.size(0) // (x_src.size(0) + 2) + 1))
