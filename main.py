@@ -48,6 +48,8 @@ parser.add_argument('--val_batch', default=10, type=int,
                     help='Batch size for validation. '
                          'The result images are stored in the form of (val_batch, val_batch) grid.')
 parser.add_argument('--log_step', default=100, type=int)
+parser.add_argument('--val_epoch', default=3, type=int)
+parser.add_argument('--save_epoch', default=3, type=int)
 
 parser.add_argument('--sty_dim', default=128, type=int, help='The size of style vector')
 parser.add_argument('--output_k', default=400, type=int, help='Total number of classes to use')
@@ -233,7 +235,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     for epoch in range(args.start_epoch, args.epochs):
         print("START EPOCH[{}]".format(epoch+1))
-        if (epoch + 1) % (args.epochs // 20) == 0:
+        if (epoch + 1) % args.save_epoch == 0:
             save_model(args, epoch, networks, opts)
 
         if args.distributed:
@@ -247,7 +249,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
         trainFunc(train_loader, networks, opts, epoch, args, {'logger': logger})
 
-        if (epoch + 1) % (args.epochs // 3) == 0:
+        if (epoch + 1) % args.val_epoch == 0:
             validationFunc(val_loader, networks, epoch, args, {'logger': logger})
 
 #################

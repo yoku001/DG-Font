@@ -21,13 +21,15 @@ def get_dataset(args):
 
     normalize = transforms.Normalize(mean=mean, std=std)
 
-    transform = Compose([transforms.Resize((args.img_size, args.img_size)),
+    transform = Compose([
+        transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.90, 1.10)),
+        transforms.RandomRotation(5, transforms.InterpolationMode.BILINEAR, fill=255),
+        transforms.ToTensor(),
+        normalize])
+
+    transform_val = Compose([transforms.RandomResizedCrop((args.img_size, args.img_size)),
                                    transforms.ToTensor(),
                                    normalize])
-
-    transform_val = Compose([transforms.Resize((args.img_size, args.img_size)),
-                                       transforms.ToTensor(),
-                                       normalize])
 
     class_to_use = args.att_to_use
 
